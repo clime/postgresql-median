@@ -68,7 +68,7 @@ median_setup(FunctionCallInfo fcinfo, MemoryContext mem_context)
 
 	state = (State *) palloc(sizeof(State));
 
-#if ((PG_VERSION_NUM >= 110000))
+#if (PG_VERSION_NUM >= 110000)
 	/* added SortCoordinate to tuplesort_begin_datum method */
 	state->tuplesort = tuplesort_begin_datum(arg_type, lt_op, fcinfo->fncollation, false, work_mem, NULL, true);
 #else
@@ -87,7 +87,7 @@ median_setup(FunctionCallInfo fcinfo, MemoryContext mem_context)
 	 */
 	callback_context = PgAllocSetContextCreate(mem_context, "Callback context", ALLOCSET_SMALL_SIZES);
 	callback = MemoryContextAlloc(callback_context, sizeof(MemoryContextCallback));
-	callback->arg = (void *) (state);
+	callback->arg = (void *) state;
 	callback->func = cleanup_state;
 	MemoryContextRegisterResetCallback(callback_context, callback);
 
