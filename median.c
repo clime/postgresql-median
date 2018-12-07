@@ -39,7 +39,7 @@ PG_FUNCTION_INFO_V1(median_transfn);
 PG_FUNCTION_INFO_V1(median_finalfn);
 
 static Datum get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *isnull);
-static State * median_setup(FunctionCallInfo fcinfo, MemoryContext mem_context);
+static State *median_setup(FunctionCallInfo fcinfo, MemoryContext mem_context);
 static void cleanup_state(void *arg);
 
 static void
