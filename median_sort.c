@@ -15,10 +15,32 @@
 #define INT_MEAN(i1, i2) (i1/2 + i2/2 + (i1%2 + i2%2)/2)
 #define FLOAT_MEAN(f1, f2) (f1/2 + f2/2)
 
+/*
+ * Agorithm used to determine the median
+ * -------------------------------------
+ *
+ * 1) Take two Heap(1 Min Heap and 1 Max Heap)
+ *    Max Heap will contain first half number of elements
+ *    Min Heap will contain second half number of elements
+ *
+ * 2) Compare new number from stream with top of Max Heap,
+ *    if it is smaller or equal add that number in max heap.
+ *    Otherwise add number in Min Heap.
+ *
+ * 3) if min Heap has more elements than Max Heap
+ *    then remove top element of Min Heap and add in Max Heap.
+ *    if max Heap has more than one element than in Min Heap
+ *    then remove top element of Max Heap and add in Min Heap.
+ *
+ * 4) If Both heaps has equal number of elements then
+ *    median will be half of sum of max element from Max Heap and min element from Min Heap.
+ *    Otherwise median will be max element from the first partition.
+ */
+
 static int heap_pairingheap_comparator(const pairingheap_node *a, const pairingheap_node *b, void *arg);
 
 MedianSort *
-median_sort_init(FunctionCallInfo fcinfo, Oid datum_type, Oid sort_collation, MemoryContext mem_context)
+median_sort_init(Oid datum_type, Oid sort_collation, MemoryContext mem_context)
 {
     MedianSort *median_sort;
 	Oid         lt_op, gt_op;
@@ -28,7 +50,6 @@ median_sort_init(FunctionCallInfo fcinfo, Oid datum_type, Oid sort_collation, Me
 
 	prev_context = MemoryContextSwitchTo(mem_context);
 
-    //elog(INFO, ">>>>>>>>>>>> %d", mem_context);
 	get_sort_group_operators(datum_type, true, false, false, &lt_op, NULL, &gt_op, &is_hashable);
 
 	max_heap_ssup = (SortSupport) palloc0(sizeof(SortSupportData));
@@ -63,8 +84,6 @@ median_sort_init(FunctionCallInfo fcinfo, Oid datum_type, Oid sort_collation, Me
 
     median_sort->mem_context = mem_context;
 
-    median_sort->fcinfo = fcinfo;
-
 	MemoryContextSwitchTo(prev_context);
 
     return median_sort;
@@ -86,21 +105,6 @@ median_sort_add_datum(MedianSort *median_sort, Datum datum)
     item = (Item *) palloc(sizeof(Item));
     item->datum = datum;
 
-    item->fcinfo = median_sort->fcinfo;
-    item->datum_type = median_sort->datum_type;
-
-    /*
-    if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-    {
-        median_sort->fcinfo->arg[0] = datum;
-        elog(INFO, "adding: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-    }
-    else
-    {
-        elog(INFO, "adding: %d", item->datum);
-    }
-    */
-
     if (median_sort->max_heap_size != 0)
     {
         int cmp_result;
@@ -108,39 +112,13 @@ median_sort_add_datum(MedianSort *median_sort, Datum datum)
         max_heap_first_item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
 	    cmp_result = ApplySortComparator(datum, false, max_heap_first_item->datum, false, median_sort->max_heap.ph_arg);
 
-        /*
-        elog(INFO, "cmp_result: %d", cmp_result);
-
-		if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-        {
-
-            elog(INFO, "::::::::::::");
-            median_sort->fcinfo->arg[0] = datum;
-            elog(INFO, "sdatum1: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-            median_sort->fcinfo->arg[0] = max_heap_first_item->datum;
-            elog(INFO, "sdatum2: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-            elog(INFO, "result: %d", ApplySortComparator(datum, false, max_heap_first_item->datum, false, median_sort->max_heap.ph_arg));
-            elog(INFO, "::::::::::::");
-        }
-        else
-        {
-            elog(INFO, "::::::::::::");
-            elog(INFO, "datum1: %d", datum);
-            elog(INFO, "datum2: %d", max_heap_first_item->datum);
-            elog(INFO, "result: %d", ApplySortComparator(datum, false, max_heap_first_item->datum, false, median_sort->max_heap.ph_arg));
-            elog(INFO, "::::::::::::");
-        }
-        */
-
         if (cmp_result <= 0)
         {
-            //elog(INFO, "into max");
             pairingheap_add(&median_sort->max_heap, &item->heap_node);
             median_sort->max_heap_size++;
         }
         else
         {
-            //elog(INFO, "into min");
             pairingheap_add(&median_sort->min_heap, &item->heap_node);
             median_sort->min_heap_size++;
         }
@@ -150,44 +128,6 @@ median_sort_add_datum(MedianSort *median_sort, Datum datum)
         pairingheap_add(&median_sort->max_heap, &item->heap_node);
         median_sort->max_heap_size++;
     }
-
-    /*
-    if (median_sort->max_heap_size > 0)
-    {
-        Item *item;
-        item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
-
-		if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-        {
-            median_sort->fcinfo->arg[0] = item->datum;
-            elog(INFO, "max_heap_first: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-        }
-        else
-        {
-            elog(INFO, "max_heap_first: %d", item->datum);
-        }
-
-    }
-    if (median_sort->min_heap_size > 0)
-    {
-        Item *item;
-        item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->min_heap));
-
-		if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-        {
-            median_sort->fcinfo->arg[0] = item->datum;
-            elog(INFO, "min_heap_first: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-        }
-        else
-        {
-            elog(INFO, "min_heap_first: %d", item->datum);
-        }
-    }
-
-    elog(INFO, "max_heap_size: %ld", median_sort->max_heap_size);
-    elog(INFO, "min_heap_size: %ld", median_sort->min_heap_size);
-    elog(INFO, "------------");
-    */
 
     median_sort_rebalance(median_sort);
 
@@ -249,43 +189,6 @@ median_sort_rebalance(MedianSort *median_sort)
         median_sort->min_heap_size++;
     }
 
-    /*
-    if (median_sort->max_heap_size > 0)
-    {
-        Item *item;
-        item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
-
-		if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-        {
-            median_sort->fcinfo->arg[0] = item->datum;
-            elog(INFO, "max_heap_first: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-        }
-        else
-        {
-            elog(INFO, "max_heap_first: %d", item->datum);
-        }
-
-    }
-    if (median_sort->min_heap_size > 0)
-    {
-        Item *item;
-        item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->min_heap));
-
-		if (median_sort->datum_type == TIMESTAMPTZOID || median_sort->datum_type == TIMESTAMPOID)
-        {
-            median_sort->fcinfo->arg[0] = item->datum;
-            elog(INFO, "min_heap_first: %s", DatumGetCString(timestamp_out(median_sort->fcinfo)));
-        }
-        else
-        {
-            elog(INFO, "min_heap_first: %d", item->datum);
-        }
-    }
-
-    elog(INFO, "max_heap_size: %ld", median_sort->max_heap_size);
-    elog(INFO, "min_heap_size: %ld", median_sort->min_heap_size);
-    elog(INFO, "------------");
-    */
 }
 
 int
@@ -300,33 +203,14 @@ heap_pairingheap_comparator (
     item1 = pairingheap_container(Item, heap_node, (pairingheap_node*) a);
     item2 = pairingheap_container(Item, heap_node, (pairingheap_node*) b);
 
-    /*
-    if (item1->datum_type == TIMESTAMPTZOID || item1->datum_type == TIMESTAMPOID)
-    {
-        elog(INFO, "~~~~~~~~~~~");
-        item1->fcinfo->arg[0] = item1->datum;
-        elog(INFO, "sdatum1: %s", DatumGetCString(timestamp_out(item1->fcinfo)));
-        item2->fcinfo->arg[0] = item2->datum;
-        elog(INFO, "sdatum2: %s", DatumGetCString(timestamp_out(item2->fcinfo)));
-        elog(INFO, "result: %d", (-1) * ApplySortComparator(item2->datum, false, item1->datum, false, ssup));
-        elog(INFO, "~~~~~~~~~~~");
-    }
-    else
-    {
-        elog(INFO, "~~~~~~~~~~~");
-        elog(INFO, "datum1: %d", item1->datum);
-        elog(INFO, "datum2: %d", item2->datum);
-        elog(INFO, "result: %d", (-1) * ApplySortComparator(item2->datum, false, item1->datum, false, ssup));
-        elog(INFO, "~~~~~~~~~~~");
-    }
-    */
-
 	return ApplySortComparator(item1->datum, false, item2->datum, false, ssup);
 }
 
 Datum
 get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 {
+    *is_null = false;
+
 	switch (arg_type)
 	{
 		case INT2OID:
@@ -338,7 +222,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				i1 = DatumGetInt16(val1);
 				i2 = DatumGetInt16(val2);
 				iretval = INT_MEAN(i1, i2);
-                *is_null = false;
 				PG_RETURN_INT16(iretval);
 			}
 		case INT4OID:
@@ -350,7 +233,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				i1 = DatumGetInt32(val1);
 				i2 = DatumGetInt32(val2);
 				iretval = INT_MEAN(i1, i2);
-                *is_null = false;
 				PG_RETURN_INT32(iretval);
 			}
 		case INT8OID:
@@ -362,7 +244,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				i1 = DatumGetInt64(val1);
 				i2 = DatumGetInt64(val2);
 				iretval = INT_MEAN(i1, i2);
-                *is_null = false;
 				PG_RETURN_INT64(iretval);
 			}
 		case FLOAT4OID:
@@ -374,7 +255,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				f1 = DatumGetFloat4(val1);
 				f2 = DatumGetFloat4(val2);
 				fretval = FLOAT_MEAN(f1, f2);
-                *is_null = false;
 				PG_RETURN_FLOAT4(fretval);
 			}
 		case FLOAT8OID:
@@ -386,7 +266,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				f1 = DatumGetFloat8(val1);
 				f2 = DatumGetFloat8(val2);
 				fretval = FLOAT_MEAN(f1, f2);
-                *is_null = false;
 				PG_RETURN_FLOAT8(fretval);
 			}
 		case NUMERICOID:
@@ -400,7 +279,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				div1 = DirectFunctionCall2(numeric_div, val1, divisor);
 				div2 = DirectFunctionCall2(numeric_div, val2, divisor);
 				retval = DirectFunctionCall2(numeric_add, div1, div2);
-                *is_null = false;
 				PG_RETURN_DATUM(retval);
 			}
 		case CASHOID:
@@ -412,7 +290,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				div1 = DirectFunctionCall2(cash_div_int4, val1, 2);
 				div2 = DirectFunctionCall2(cash_div_int4, val2, 2);
 				retval = DirectFunctionCall2(cash_pl, div1, div2);
-                *is_null = false;
 				PG_RETURN_DATUM(retval);
 			}
 		case INTERVALOID:
@@ -426,7 +303,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				div1 = DirectFunctionCall2(interval_div, val1, divisor);
 				div2 = DirectFunctionCall2(interval_div, val2, divisor);
 				retval = DirectFunctionCall2(interval_pl, div1, div2);
-                *is_null = false;
 				PG_RETURN_DATUM(retval);
 			}
 		case TIMESTAMPOID:
@@ -438,7 +314,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				diff = DirectFunctionCall2(timestamp_mi, val2, val1);
 				halfdiff = DirectFunctionCall2(interval_div, diff, Float8GetDatum((double) 2));
 				retval = DirectFunctionCall2(timestamp_pl_interval, val1, halfdiff);
-                *is_null = false;
 				PG_RETURN_DATUM(retval);
 			}
 		case TIMESTAMPTZOID:
@@ -450,7 +325,6 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				diff = DirectFunctionCall2(timestamp_mi, val2, val1);
 				halfdiff = DirectFunctionCall2(interval_div, diff, Float8GetDatum((double) 2));
 				retval = DirectFunctionCall2(timestamptz_pl_interval, val1, halfdiff);
-                *is_null = false;
 				PG_RETURN_DATUM(retval);
 			}
 		default:
@@ -459,5 +333,5 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				return (Datum) 0;
 			}
 	}
-	return (Datum) 0; // should not be reached
+	return (Datum) 0; // should never be reached
 }

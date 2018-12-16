@@ -27,7 +27,6 @@ median_transfn(PG_FUNCTION_ARGS)
 
     if (PG_ARGISNULL(0))
 		median_sort = median_sort_init(
-                fcinfo,
                 get_fn_expr_argtype(fcinfo->flinfo, 1), 
                 fcinfo->fncollation, agg_context);
 	else
