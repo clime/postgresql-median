@@ -235,8 +235,7 @@ median_sort_rebalance(MedianSort * median_sort)
 }
 
 int
-heap_pairingheap_comparator(
-							const pairingheap_node *a,
+heap_pairingheap_comparator(const pairingheap_node *a,
 							const pairingheap_node *b,
 							void *arg)
 {
@@ -378,7 +377,7 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 			}
 	}
 
-	assert(false);
 	/* should never be reached */
+	assert(false);
 	return (Datum) 0;
 }
