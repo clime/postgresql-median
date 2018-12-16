@@ -46,201 +46,206 @@
  * memory.
  */
 
-static int heap_pairingheap_comparator(const pairingheap_node *a, const pairingheap_node *b, void *arg);
+static int	heap_pairingheap_comparator(const pairingheap_node *a, const pairingheap_node *b, void *arg);
 
 MedianSort *
 median_sort_init(Oid datum_type, Oid sort_collation, MemoryContext mem_context)
 {
-    MedianSort *median_sort;
-	Oid         lt_op, gt_op;
+	MedianSort *median_sort;
+	Oid			lt_op,
+				gt_op;
 	bool		is_hashable;
 	MemoryContext prev_context;
-    SortSupport min_heap_ssup, max_heap_ssup;
+	SortSupport min_heap_ssup,
+				max_heap_ssup;
 
 	prev_context = MemoryContextSwitchTo(mem_context);
 
 	get_sort_group_operators(datum_type, true, false, true, &lt_op, NULL, &gt_op, &is_hashable);
 
 	max_heap_ssup = (SortSupport) palloc0(sizeof(SortSupportData));
-    max_heap_ssup->ssup_cxt = CurrentMemoryContext;
-    max_heap_ssup->ssup_collation = sort_collation;
-    max_heap_ssup->ssup_nulls_first = false;
-    max_heap_ssup->abbreviate = false;
+	max_heap_ssup->ssup_cxt = CurrentMemoryContext;
+	max_heap_ssup->ssup_collation = sort_collation;
+	max_heap_ssup->ssup_nulls_first = false;
+	max_heap_ssup->abbreviate = false;
 	PrepareSortSupportFromOrderingOp(gt_op, max_heap_ssup);
 
 	min_heap_ssup = (SortSupport) palloc0(sizeof(SortSupportData));
-    min_heap_ssup->ssup_cxt = CurrentMemoryContext;
-    min_heap_ssup->ssup_collation = sort_collation;
-    min_heap_ssup->ssup_nulls_first = false;
-    min_heap_ssup->abbreviate = false;
+	min_heap_ssup->ssup_cxt = CurrentMemoryContext;
+	min_heap_ssup->ssup_collation = sort_collation;
+	min_heap_ssup->ssup_nulls_first = false;
+	min_heap_ssup->abbreviate = false;
 	PrepareSortSupportFromOrderingOp(lt_op, min_heap_ssup);
 
-    median_sort = (MedianSort *) palloc(sizeof(MedianSort));
-    median_sort->datum_type = datum_type;
+	median_sort = (MedianSort *) palloc(sizeof(MedianSort));
+	median_sort->datum_type = datum_type;
 
-    dlist_init(&median_sort->items);
+	dlist_init(&median_sort->items);
 
 	median_sort->max_heap.ph_compare = heap_pairingheap_comparator;
-    median_sort->max_heap.ph_arg = max_heap_ssup;
-    median_sort->max_heap.ph_root = NULL;
+	median_sort->max_heap.ph_arg = max_heap_ssup;
+	median_sort->max_heap.ph_root = NULL;
 
 	median_sort->min_heap.ph_compare = heap_pairingheap_comparator;
-    median_sort->min_heap.ph_arg = min_heap_ssup;
-    median_sort->min_heap.ph_root = NULL;
+	median_sort->min_heap.ph_arg = min_heap_ssup;
+	median_sort->min_heap.ph_root = NULL;
 
-    median_sort->max_heap_size = 0;
-    median_sort->min_heap_size = 0;
+	median_sort->max_heap_size = 0;
+	median_sort->min_heap_size = 0;
 
-    median_sort->mem_context = mem_context;
+	median_sort->mem_context = mem_context;
 
 	MemoryContextSwitchTo(prev_context);
 
-    return median_sort;
+	return median_sort;
 }
 
 void
-median_sort_remove_datum(MedianSort *median_sort, Datum datum)
+median_sort_remove_datum(MedianSort * median_sort, Datum datum)
 {
 	dlist_mutable_iter node_iter;
-    Item *item;
+	Item	   *item;
 
-    dlist_foreach_modify(node_iter, &median_sort->items)
-    {
-        item = dlist_container(Item, list_node, node_iter.cur);
+	dlist_foreach_modify(node_iter, &median_sort->items)
+	{
+		item = dlist_container(Item, list_node, node_iter.cur);
 
-        if (item->datum != datum)
-            continue;
+		if (item->datum != datum)
+			continue;
 
-       pairingheap_remove(item->own_heap, &item->heap_node);
-       dlist_delete(node_iter.cur);
+		pairingheap_remove(item->own_heap, &item->heap_node);
+		dlist_delete(node_iter.cur);
 
-       if (item->own_heap == &median_sort->max_heap)
-            median_sort->max_heap_size--;
-       else if (item->own_heap == &median_sort->min_heap)
-            median_sort->min_heap_size--;
+		if (item->own_heap == &median_sort->max_heap)
+			median_sort->max_heap_size--;
+		else if (item->own_heap == &median_sort->min_heap)
+			median_sort->min_heap_size--;
 
-       return;
-    }
+		return;
+	}
 }
 
 Item *
-median_sort_add_datum(MedianSort *median_sort, Datum datum)
+median_sort_add_datum(MedianSort * median_sort, Datum datum)
 {
-    Item *item, *max_heap_first_item;
+	Item	   *item,
+			   *max_heap_first_item;
 	MemoryContext prev_context;
 
 	prev_context = MemoryContextSwitchTo(median_sort->mem_context);
 
-    item = (Item *) palloc(sizeof(Item));
-    item->datum = datum;
+	item = (Item *) palloc(sizeof(Item));
+	item->datum = datum;
 
-    if (median_sort->max_heap_size != 0)
-    {
-        int cmp_result;
-        
-        max_heap_first_item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
-	    cmp_result = ApplySortComparator(datum, false, max_heap_first_item->datum, false, median_sort->max_heap.ph_arg);
+	if (median_sort->max_heap_size != 0)
+	{
+		int			cmp_result;
 
-        if (cmp_result <= 0)
-        {
-            pairingheap_add(&median_sort->max_heap, &item->heap_node);
-            item->own_heap = &median_sort->max_heap;
-            median_sort->max_heap_size++;
-        }
-        else
-        {
-            pairingheap_add(&median_sort->min_heap, &item->heap_node);
-            item->own_heap = &median_sort->min_heap;
-            median_sort->min_heap_size++;
-        }
-    }
-    else
-    {
-        pairingheap_add(&median_sort->max_heap, &item->heap_node);
-        item->own_heap = &median_sort->max_heap;
-        median_sort->max_heap_size++;
-    }
+		max_heap_first_item = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
+		cmp_result = ApplySortComparator(datum, false, max_heap_first_item->datum, false, median_sort->max_heap.ph_arg);
 
-    median_sort_rebalance(median_sort);
+		if (cmp_result <= 0)
+		{
+			pairingheap_add(&median_sort->max_heap, &item->heap_node);
+			item->own_heap = &median_sort->max_heap;
+			median_sort->max_heap_size++;
+		}
+		else
+		{
+			pairingheap_add(&median_sort->min_heap, &item->heap_node);
+			item->own_heap = &median_sort->min_heap;
+			median_sort->min_heap_size++;
+		}
+	}
+	else
+	{
+		pairingheap_add(&median_sort->max_heap, &item->heap_node);
+		item->own_heap = &median_sort->max_heap;
+		median_sort->max_heap_size++;
+	}
 
-    dlist_push_tail(&median_sort->items, &item->list_node);
+	median_sort_rebalance(median_sort);
+
+	dlist_push_tail(&median_sort->items, &item->list_node);
 
 	MemoryContextSwitchTo(prev_context);
 
-    return item;
+	return item;
 }
 
 Datum
-median_sort_median(MedianSort *median_sort, bool *is_null)
+median_sort_median(MedianSort * median_sort, bool *is_null)
 {
-    Item *item1, *item2;
+	Item	   *item1,
+			   *item2;
 
-    assert(median_sort->max_heap_size >= median_sort->min_heap_size);
+	assert(median_sort->max_heap_size >= median_sort->min_heap_size);
 
-    if (median_sort->max_heap_size > median_sort->min_heap_size)
-    {
-        item1 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
-        *is_null = false;
-        return item1->datum;
-    }
+	if (median_sort->max_heap_size > median_sort->min_heap_size)
+	{
+		item1 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
+		*is_null = false;
+		return item1->datum;
+	}
 
-    if (median_sort->max_heap_size > 0 && median_sort->min_heap_size > 0)
-    {
-        item1 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
-        item2 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->min_heap));
-    }
-    else
-    {
-        *is_null = true;
-        return (Datum) 0;
-    }
+	if (median_sort->max_heap_size > 0 && median_sort->min_heap_size > 0)
+	{
+		item1 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->max_heap));
+		item2 = pairingheap_container(Item, heap_node, pairingheap_first(&median_sort->min_heap));
+	}
+	else
+	{
+		*is_null = true;
+		return (Datum) 0;
+	}
 
-    return get_mean_of_two(median_sort->datum_type, item1->datum, item2->datum, is_null);
+	return get_mean_of_two(median_sort->datum_type, item1->datum, item2->datum, is_null);
 }
 
 void
-median_sort_rebalance(MedianSort *median_sort)
+median_sort_rebalance(MedianSort * median_sort)
 {
-    pairingheap_node *node;
-    Item *item;
+	pairingheap_node *node;
+	Item	   *item;
 
-    while (median_sort->min_heap_size > median_sort->max_heap_size)
-    {
-        node = pairingheap_remove_first(&median_sort->min_heap);
-        median_sort->min_heap_size--;
+	while (median_sort->min_heap_size > median_sort->max_heap_size)
+	{
+		node = pairingheap_remove_first(&median_sort->min_heap);
+		median_sort->min_heap_size--;
 
-        pairingheap_add(&median_sort->max_heap, node);
-        median_sort->max_heap_size++;
+		pairingheap_add(&median_sort->max_heap, node);
+		median_sort->max_heap_size++;
 
-        item = pairingheap_container(Item, heap_node, node);
-        item->own_heap = &median_sort->max_heap;
-    }
+		item = pairingheap_container(Item, heap_node, node);
+		item->own_heap = &median_sort->max_heap;
+	}
 
-    while (median_sort->max_heap_size > median_sort->min_heap_size + 1)
-    {
-        node = pairingheap_remove_first(&median_sort->max_heap);
-        median_sort->max_heap_size--;
+	while (median_sort->max_heap_size > median_sort->min_heap_size + 1)
+	{
+		node = pairingheap_remove_first(&median_sort->max_heap);
+		median_sort->max_heap_size--;
 
-        pairingheap_add(&median_sort->min_heap, node);
-        median_sort->min_heap_size++;
+		pairingheap_add(&median_sort->min_heap, node);
+		median_sort->min_heap_size++;
 
-        item = pairingheap_container(Item, heap_node, node);
-        item->own_heap = &median_sort->min_heap;
-    }
+		item = pairingheap_container(Item, heap_node, node);
+		item->own_heap = &median_sort->min_heap;
+	}
 
 }
 
 int
 heap_pairingheap_comparator(
-        const pairingheap_node *a,
-        const pairingheap_node *b,
-        void *arg)
+							const pairingheap_node *a,
+							const pairingheap_node *b,
+							void *arg)
 {
 	SortSupport ssup = (SortSupport) arg;
-    Item *item1, *item2;
+	Item	   *item1,
+			   *item2;
 
-    item1 = pairingheap_container(Item, heap_node, (pairingheap_node*) a);
-    item2 = pairingheap_container(Item, heap_node, (pairingheap_node*) b);
+	item1 = pairingheap_container(Item, heap_node, (pairingheap_node *) a);
+	item2 = pairingheap_container(Item, heap_node, (pairingheap_node *) b);
 
 	return ApplySortComparator(item1->datum, false, item2->datum, false, ssup);
 }
@@ -248,7 +253,7 @@ heap_pairingheap_comparator(
 Datum
 get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 {
-    *is_null = false;
+	*is_null = false;
 
 	switch (arg_type)
 	{
@@ -373,6 +378,7 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 			}
 	}
 
-    assert(false); // should never be reached
+	assert(false);
+	/* should never be reached */
 	return (Datum) 0;
 }
