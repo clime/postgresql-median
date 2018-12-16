@@ -30,6 +30,7 @@ INSERT INTO textvals VALUES
 SELECT * FROM textvals ORDER BY val;
 SELECT median(val) FROM textvals;
 
+-- Timestamps
 DROP TABLE IF EXISTS timestampvals;
 CREATE TABLE timestampvals (val timestamptz);
 
@@ -38,3 +39,7 @@ SELECT TIMESTAMP 'epoch' + (i * INTERVAL '1 second')
 FROM generate_series(0, 10) as T(i);
 
 SELECT median(val) FROM timestampvals;
+
+-- Moving-aggregate mode
+SELECT array_agg(val) OVER (ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING) FROM generate_series(0, 10) as val;
+SELECT median(val) OVER (ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING) FROM generate_series(0, 10) as val;
