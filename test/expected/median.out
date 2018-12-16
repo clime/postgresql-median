@@ -184,7 +184,7 @@ SELECT color, median(val) FROM intvals GROUP BY color;
  e     |      2
 (5 rows)
 
--- Test parallel usage
+-- Test multiple usage
 SELECT median(val), median(color) FROM intvals;
  median | median 
 --------+--------
