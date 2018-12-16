@@ -70,7 +70,7 @@ median_transfn_inv(PG_FUNCTION_ARGS)
  * Median final function.
  *
  * This function is called after all values in the median set has been
- * processed by the state transfer function. It should perform any necessary
+ * processed by the state transfer functions. It should perform any necessary
  * post processing and clean up any temporary state.
  */
 Datum

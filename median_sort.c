@@ -16,25 +16,34 @@
 #define FLOAT_MEAN(f1, f2) (f1/2 + f2/2)
 
 /*
- * Agorithm used to determine the median
- * -------------------------------------
+ * The algorithm implemented below can be described by the
+ * following steps:
  *
- * 1) Take two Heap(1 Min Heap and 1 Max Heap)
- *    Max Heap will contain first half number of elements
- *    Min Heap will contain second half number of elements
+ * 1) Create two heaps (1 min heap and 1 max heap)
+ *    max heap will contain first half of elements
+ *    min heap will contain second half of elements
  *
- * 2) Compare new number from stream with top of Max Heap,
- *    if it is smaller or equal add that number in max heap.
- *    Otherwise add number in Min Heap.
+ * 2) Compare new element from stream with top of max heap,
+ *    if it is smaller or equal, add the element into max heap.
+ *    Otherwise, add the element into min heap.
  *
- * 3) if min Heap has more elements than Max Heap
- *    then remove top element of Min Heap and add in Max Heap.
- *    if max Heap has more than one element than in Min Heap
- *    then remove top element of Max Heap and add in Min Heap.
+ * 3) If min heap has more elements than max heap,
+ *    remove top element of min heap and add it into max heap.
+ *    If max heap has more than one element than min heap,
+ *    remove top element of max heap and add it into min heap.
  *
- * 4) If Both heaps has equal number of elements then
- *    median will be half of sum of max element from Max Heap and min element from Min Heap.
- *    Otherwise median will be max element from the first partition.
+ * 4) If both heaps has equal number of elements, then
+ *    median will be half of sum of max element from max heap
+ *    and min element from min heap. Otherwise, median will be
+ *    max element from the first partition.
+ */
+
+/*
+ * Note on memory allocation:
+ *
+ * We allocate everything in the memory context provided to init method and
+ * leave it to a caller to delete the context and hence free all the allocated
+ * memory.
  */
 
 static int heap_pairingheap_comparator(const pairingheap_node *a, const pairingheap_node *b, void *arg);
@@ -363,5 +372,7 @@ get_mean_of_two(Oid arg_type, Datum val1, Datum val2, bool *is_null)
 				return (Datum) 0;
 			}
 	}
-	return (Datum) 0; // should never be reached
+
+    assert(false); // should never be reached
+	return (Datum) 0;
 }
