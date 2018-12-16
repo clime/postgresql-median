@@ -1,2 +1,4 @@
 median.o
 median.so
+median_sort.o
+test/regression.*
