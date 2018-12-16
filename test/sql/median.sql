@@ -105,7 +105,7 @@ SELECT median(val) FROM intervalvals;
 -- Test ints group by
 SELECT color, median(val) FROM intvals GROUP BY color;
 
--- Test parallel usage
+-- Test multiple usage
 SELECT median(val), median(color) FROM intvals;
 
 -- Test parallel usage on a single field
@@ -116,3 +116,7 @@ SELECT median(x) OVER (ORDER BY n ROWS BETWEEN CURRENT ROW AND 1 FOLLOWING) FROM
 
 -- Test window context with OVER (PARTITION BY) statement
 SELECT color, median(val) OVER (PARTITION BY color) from intvals;
+
+-- Test moving-aggregate mode
+SELECT array_agg(val) OVER (ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING) FROM generate_series(0, 10) as val;
+SELECT median(val) OVER (ROWS BETWEEN CURRENT ROW AND 2 FOLLOWING) FROM generate_series(0, 10) as val;

@@ -18,6 +18,7 @@ typedef struct Item
 {
     Datum datum;
     pairingheap_node heap_node;
+    pairingheap     *own_heap;
     dlist_node       list_node;
 } Item;
 
